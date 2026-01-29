@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 
 from core.jwt import decode_token
+from models.users import AuthRole
 import traceback
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -35,3 +36,13 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             detail="Token validation failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def require_roles(*allowed_roles: AuthRole):
+    def _checker(current_user: dict = Depends(get_current_user)):
+        role = current_user.get("role")
+        if role not in {r.value for r in allowed_roles}:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        return current_user
+
+    return _checker
