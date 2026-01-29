@@ -37,6 +37,7 @@ class OPD(Base, table=True):
 
 
 class AppointmentType(Base, table=True):
+    # TODO: add priority levels normal, high, emergency (currently priority is stored in discussion)
     type_name: str = Field(unique=True, index=True,
                            max_length=100)  # Unique constraint
     description: Optional[str] = Field(default=None, max_length=255)
