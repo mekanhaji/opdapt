@@ -6,14 +6,20 @@ from sqlmodel import Session, select
 from config import ACCESS_TOKEN_EXPIRE_MINUTES
 from core.jwt import create_access_token
 from core.security import hash_password, verify_password
-from dependencies.auth import get_current_user
+from dependencies.auth import get_current_user, require_roles
 from models import get_session
-from models.users import AuthRole, Auth, Patient
+from models.users import AuthRole, Auth, Admin, Patient
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 class PatientRegisterRequest(BaseModel):
+    phone_number: str
+    password: str
+    name: str
+
+
+class AdminRegisterRequest(BaseModel):
     phone_number: str
     password: str
     name: str
@@ -29,9 +35,50 @@ def read_root(current_user: dict = Depends(get_current_user)):
     return {"message": "Hello from FastAPI + uv!", "user": current_user}
 
 
-@router.post("/register")
-def register():
-    return {"message": "User registered"}
+@router.post("/new-admin")
+def register_admin(
+    request: AdminRegisterRequest,
+    session: Session = Depends(get_session),
+    _current_user: dict = Depends(
+        require_roles(AuthRole.ADMIN, AuthRole.DOCTOR))
+):
+    # Check if phone number already exists
+    existing_auth = session.exec(
+        select(Auth).where(Auth.phone_number == request.phone_number)
+    ).first()
+
+    if existing_auth:
+        raise HTTPException(
+            status_code=400, detail="Phone number already registered")
+
+    # Create auth record
+    auth = Auth(
+        phone_number=request.phone_number,
+        password_hash=hash_password(request.password),
+        role=AuthRole.ADMIN
+    )
+    session.add(auth)
+    session.flush()  # Flush to get the auth.id
+
+    # Ensure auth.id is not None before creating admin record
+    if auth.id is None:
+        session.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to create auth record")
+
+    # Create admin record
+    admin = Admin(
+        name=request.name,
+        auth_id=auth.id
+    )
+    session.add(admin)
+    session.commit()
+
+    return {
+        "message": "Admin registered successfully",
+        "admin_id": admin.id,
+        "auth_id": auth.id
+    }
 
 
 @router.post("/new-patient")
