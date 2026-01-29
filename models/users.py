@@ -1,10 +1,12 @@
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship
 
-from .appointment import OPD, Appointment
 from .base import Base
+
+if TYPE_CHECKING:
+    from .appointment import OPD, Appointment
 
 
 class AuthRole(str, Enum):
@@ -50,7 +52,7 @@ class Doctor(Base, table=True):
     auth_id: int = Field(foreign_key="auth.id", unique=True)
     auth: Auth = Relationship(back_populates="doctor")
 
-    opds: list["OPD"] = Relationship(back_populates="doctor")
+    opds: list["OPD"] = Relationship(back_populates="doctor")  # type: ignore
 
 
 class Patient(Base, table=True):
@@ -60,4 +62,5 @@ class Patient(Base, table=True):
     auth_id: int = Field(foreign_key="auth.id", unique=True)
     auth: Auth = Relationship(back_populates="patient")
 
-    appointments: list["Appointment"] = Relationship(back_populates="patient")
+    appointments: list["Appointment"] = Relationship(
+        back_populates="patient")  # type: ignore

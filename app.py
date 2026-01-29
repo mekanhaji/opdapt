@@ -1,12 +1,17 @@
 # src/myapp/main.py
 from fastapi import FastAPI
+from api.router import api_router
+from models import create_db_and_tables
 
 app = FastAPI(title="My FastAPI App", version="0.1.0")
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Hello from FastAPI + uv!"}
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+
+
+app.include_router(api_router)
 
 
 @app.get("/items/{item_id}")

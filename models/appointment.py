@@ -1,11 +1,13 @@
 from datetime import datetime, time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import field_validator
 from sqlmodel import Field, Relationship, UniqueConstraint
 
 from .base import Base
-from .users import Doctor, Patient
+
+if TYPE_CHECKING:
+    from .users import Doctor, Patient
 
 
 class OPD(Base, table=True):
