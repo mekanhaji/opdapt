@@ -8,7 +8,7 @@ from core.jwt import create_access_token
 from core.security import hash_password, verify_password
 from dependencies.auth import get_current_user, require_roles
 from models import get_session
-from models.users import AuthRole, Auth, Admin, Patient
+from models.users import AuthRole, Auth, Admin, Doctor, Patient
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -30,9 +30,72 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _create_auth_with_profile(
+    *,
+    session: Session,
+    phone_number: str,
+    password: str,
+    name: str,
+    role: AuthRole,
+    profile_model
+):
+    existing_auth = session.exec(
+        select(Auth).where(Auth.phone_number == phone_number)
+    ).first()
+
+    if existing_auth:
+        raise HTTPException(
+            status_code=400, detail="Phone number already registered")
+
+    auth = Auth(
+        phone_number=phone_number,
+        password_hash=hash_password(password),
+        role=role
+    )
+    session.add(auth)
+    session.flush()
+
+    if auth.id is None:
+        session.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to create auth record")
+
+    profile = profile_model(
+        name=name,
+        auth_id=auth.id
+    )
+    session.add(profile)
+    session.commit()
+
+    return auth, profile
+
+
 @router.get("/")
 def read_root(current_user: dict = Depends(get_current_user)):
     return {"message": "Hello from FastAPI + uv!", "user": current_user}
+
+
+@router.post("/new-doctor")
+def register_doctor(
+    request: AdminRegisterRequest,
+    session: Session = Depends(get_session),
+    _current_user: dict = Depends(
+        require_roles(AuthRole.ADMIN, AuthRole.DOCTOR))
+):
+    auth, doctor = _create_auth_with_profile(
+        session=session,
+        phone_number=request.phone_number,
+        password=request.password,
+        name=request.name,
+        role=AuthRole.DOCTOR,
+        profile_model=Doctor
+    )
+
+    return {
+        "message": "Doctor registered successfully",
+        "doctor_id": doctor.id,
+        "auth_id": auth.id
+    }
 
 
 @router.post("/new-admin")
@@ -42,37 +105,14 @@ def register_admin(
     _current_user: dict = Depends(
         require_roles(AuthRole.ADMIN, AuthRole.DOCTOR))
 ):
-    # Check if phone number already exists
-    existing_auth = session.exec(
-        select(Auth).where(Auth.phone_number == request.phone_number)
-    ).first()
-
-    if existing_auth:
-        raise HTTPException(
-            status_code=400, detail="Phone number already registered")
-
-    # Create auth record
-    auth = Auth(
+    auth, admin = _create_auth_with_profile(
+        session=session,
         phone_number=request.phone_number,
-        password_hash=hash_password(request.password),
-        role=AuthRole.ADMIN
-    )
-    session.add(auth)
-    session.flush()  # Flush to get the auth.id
-
-    # Ensure auth.id is not None before creating admin record
-    if auth.id is None:
-        session.rollback()
-        raise HTTPException(
-            status_code=500, detail="Failed to create auth record")
-
-    # Create admin record
-    admin = Admin(
+        password=request.password,
         name=request.name,
-        auth_id=auth.id
+        role=AuthRole.ADMIN,
+        profile_model=Admin
     )
-    session.add(admin)
-    session.commit()
 
     return {
         "message": "Admin registered successfully",
@@ -86,37 +126,14 @@ def register_patient(
     request: PatientRegisterRequest,
     session: Session = Depends(get_session)
 ):
-    # Check if phone number already exists
-    existing_auth = session.exec(
-        select(Auth).where(Auth.phone_number == request.phone_number)
-    ).first()
-
-    if existing_auth:
-        raise HTTPException(
-            status_code=400, detail="Phone number already registered")
-
-    # Create auth record
-    auth = Auth(
+    auth, patient = _create_auth_with_profile(
+        session=session,
         phone_number=request.phone_number,
-        password_hash=hash_password(request.password),
-        role=AuthRole.PATIENT
-    )
-    session.add(auth)
-    session.flush()  # Flush to get the auth.id
-
-    # Ensure auth.id is not None before creating patient record
-    if auth.id is None:
-        session.rollback()
-        raise HTTPException(
-            status_code=500, detail="Failed to create auth record")
-
-    # Create patient record
-    patient = Patient(
+        password=request.password,
         name=request.name,
-        auth_id=auth.id
+        role=AuthRole.PATIENT,
+        profile_model=Patient
     )
-    session.add(patient)
-    session.commit()
 
     return {
         "message": "Patient registered successfully",
