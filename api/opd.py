@@ -262,3 +262,36 @@ def update_opd(
     session.commit()
 
     return {"message": "OPD updated successfully"}
+
+
+@router.delete("/{opd_id}")
+def disable_opd(
+    opd_id: int,
+    session: Session = Depends(get_session),
+    current_user: dict = Depends(
+        require_roles(AuthRole.DOCTOR, AuthRole.ADMIN))
+):
+    opd = session.exec(
+        select(OPD).where(OPD.id == opd_id)
+    ).first()
+
+    if not opd:
+        raise HTTPException(status_code=404, detail="OPD not found")
+
+    if current_user.get("role") == AuthRole.DOCTOR.value:
+        doctor = session.exec(
+            select(Doctor).where(Doctor.auth_id == current_user["user_id"])
+        ).first()
+
+        if not doctor:
+            raise HTTPException(
+                status_code=404, detail="Doctor profile not found")
+
+        if opd.doctor_id != doctor.id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+    opd.is_active = False
+    session.add(opd)
+    session.commit()
+
+    return {"message": "OPD disabled"}
